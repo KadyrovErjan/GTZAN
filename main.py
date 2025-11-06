@@ -6,6 +6,7 @@ from torchaudio import transforms
 import torch.nn.functional as F
 import io
 import soundfile as sf
+import streamlit as st
 
 class CheckAudio(nn.Module):
   def __init__(self):
@@ -67,26 +68,31 @@ def change_audio(waveform, sr):
     return spec
 audio_app = FastAPI()
 
-@audio_app.post('/predict/')
-async def predict_audio(file: UploadFile = File(...)):
-    try:
-        data = await file.read()
-        if not data:
-            raise HTTPException(status_code=404, detail='Пустой файл')
-        wf, sr = sf.read(io.BytesIO(data), dtype='float32')
-        wf = torch.tensor(wf).T
 
-        spec = change_audio(wf, sr).unsqueeze(0).to(device)
+st.title('Model GTZAN')
+st.text('Загрузите аудио файл')
 
-        with torch.no_grad():
-            y_pred = model(spec)
-            pred_ind = torch.argmax(y_pred, dim=1).item()
-            pred_class = index_to_label[pred_ind]
+audio_file = st.file_uploader('Выбериту файл', type='wav')
 
-        return {f'Индекс: {pred_ind}  Жанр: {pred_class}'}
+if not audio_file:
+    st.warning('Загрузите .wav файл')
+else:
+    st.audio(audio_file)
+if st.button('Распознать'):
+        try:
+            data = audio_file.read()
+            if not data:
+                raise HTTPException(status_code=404, detail='Пустой файл')
+            wf, sr = sf.read(io.BytesIO(data), dtype='float32')
+            wf = torch.tensor(wf).T
 
+            spec = change_audio(wf, sr).unsqueeze(0).to(device)
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-if __name__ == '__main__':
-    uvicorn.run(audio_app, host='127.0.0.1', port=8000)
+            with torch.no_grad():
+                y_pred = model(spec)
+                pred_ind = torch.argmax(y_pred, dim=1).item()
+                pred_class = index_to_label[pred_ind]
+
+            st.success({f'Индекс: {pred_ind}  Жанр: {pred_class}'})
+        except Exception as e:
+            st.exception(f'{e}')
